@@ -144,3 +144,21 @@ ORM、migrationツール、認証、フロントエンドは含みません。�
 
 これらは手元の作品・質問で試した観察であり、検索精度を定量評価した結果ではありません。また、適切な本文を取得できても、回答生成で人物の関係を逆に説明する例がありました。`sources` と回答中の資料番号を使って、根拠と回答を照合できるようにしています。
 
+## ライセンス・使用データ
+
+このリポジトリのプログラムは[ISC License](LICENSE)で公開しています。`app/data/` に収録した文学作品の本文・青空文庫作成ファイルは、このプログラムのISCライセンスの対象に含めません。
+
+作品データの利用については、[青空文庫の「収録ファイルの取り扱い規準」](https://www.aozora.gr.jp/guide/kijyunn.html)と各作品の図書カードを確認してください。収録ファイルには、底本・入力者・校正者などの出典情報が含まれています。
+
+| 作品（青空文庫の図書カード） | 著者 | 収録ファイル（`app/data/`） |
+| --- | --- | --- |
+| [羅生門](https://www.aozora.gr.jp/cards/000879/card127.html) | 芥川龍之介 | `127_15260.html` |
+| [蟹工船](https://www.aozora.gr.jp/cards/000156/card1465.html) | 小林多喜二 | `1465_16805.html` |
+| [ドグラ・マグラ](https://www.aozora.gr.jp/cards/000096/card2093.html) | 夢野久作 | `2093_28841.html` |
+| [ヴィヨンの妻](https://www.aozora.gr.jp/cards/000035/card2253.html) | 太宰治 | `2253_14908.html` |
+| [人間失格](https://www.aozora.gr.jp/cards/000035/card301.html) | 太宰治 | `301_14912.html` |
+| [銀河鉄道の夜](https://www.aozora.gr.jp/cards/000081/card456.html) | 宮沢賢治 | `456_15050.html` |
+| [学問のすすめ](https://www.aozora.gr.jp/cards/000296/card47061.html) | 福沢諭吉 | `47061_29420.html` |
+| [河童](https://www.aozora.gr.jp/cards/000879/card69.html) | 芥川龍之介 | `69_14933.html` |
+| [坊っちゃん](https://www.aozora.gr.jp/cards/000148/card752.html) | 夏目漱石 | `752_14964.html` |
+| [三四郎](https://www.aozora.gr.jp/cards/000148/card794.html) | 夏目漱石 | `794_14946.html` |
