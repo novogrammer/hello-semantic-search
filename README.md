@@ -10,8 +10,12 @@
 docker compose up --build -d
 # まず羅生門1作品を投入（OpenAI APIの利用料金が発生します）
 docker compose run --rm app npm run import -- data/127_15260.html
-curl --get 'http://localhost:3000/search' --data-urlencode 'query=孤独や不安を感じる場面' --data 'limit=10'
+curl --get 'http://localhost:3000/search' --data-urlencode 'query=行き場を失い、これからどう生きていけばよいか途方に暮れている場面' --data 'limit=10'
 ```
+
+検索文には、探したい場面や感情を具体的に書きます。例えば「孤独」という単語だけより、「周囲に理解されず、誰とも心を通わせられない寂しさを感じている場面」とすると、求める内容を詳しく指定できます。検索文と意味が近い本文を返す仕組みで、入力した単語が本文に含まれることは必須ではありません。
+
+検索対象は取り込み済みの作品だけです。上の手順では『羅生門』のみが対象になります。作品を横断して試す場合は、下記の全作品投入を実行してください。
 
 `GET /search?query=...&limit=10` は `query` と `results` を返します。各結果には `title`、`author`、`aozora_work_id`、`paragraph_no`、`body`、`distance` が含まれます。コサイン距離 `distance` が小さい順です。HNSWは近似検索です。
 
