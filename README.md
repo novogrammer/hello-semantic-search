@@ -28,7 +28,7 @@ docker compose run --rm --no-deps app npm run import -- --dry-run
 
 入力は `app/data/作品ID_ファイルID.html`（`.xhtml`も可）です。追加したファイルをコンテナで使う場合は `docker compose build app` で再ビルドしてください。ファイルのダウンロードは行いません。
 
-BufferをCheerioの `loadBuffer()` に渡し、文字コードを判定します。`.main_text` 内のルビの `rt` / `rp` を除去し、親文字を残します。外部CSSやJavaScriptの読み込み・実行はありません。`br`、ブロック要素の境界、本文内の改行で分割してtrimし、空行を除いた順に1から段落番号を付けます。見出しも本文内なら含まれます。
+BufferをCheerioの `loadBuffer()` に渡し、文字コードを判定します。`.main_text` 内のルビの `rt` / `rp` を除去し、親文字を残します。外部CSSやJavaScriptの読み込み・実行はありません。HTMLソース整形用の改行を除去し、`br` を改行として扱います。行頭の全角空白、連続する `br` による空行、ブロック要素の境界で段落を区切ります。単独の `br` は段落内の改行として残します。全角空白を判定してからtrimし、空段落を除いた順に1から段落番号を付けます。見出しも本文内なら含まれます。
 
 1段落を1行・1Embeddingとして保存します。複数段落の結合やオーバーラップは行いません。APIへは16段落ずつ送信します。モデルは取り込み・検索とも `text-embedding-3-small`、1536次元で固定しています（[OpenAI公式ドキュメント](https://developers.openai.com/api/docs/guides/embeddings)）。単一段落がモデルの入力上限を超えた場合は、切り捨てずにその作品の取り込みを失敗させます。
 

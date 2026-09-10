@@ -13,11 +13,29 @@ export function parseAozora(buffer: Buffer, filename: string) {
   const author = $(".author").first().text().trim();
   const main = $(".main_text").first();
   if (!title || !author || !main.length) throw new Error("作品名・著者・本文が見つかりません。");
-  // brとブロック境界を改行にする。ルビの親文字はそのまま残す。
+  // ソース整形用の改行を先に除去し、br由来の改行と二重に数えない。
+  // 行頭の全角空白は、段落開始の判定に使うため残す。
+  main.find("*").addBack().contents().each((_, node) => {
+    if (node.type === "text") node.data = node.data.replace(/[ \t]*[\r\n]+[ \t]*/g, "");
+  });
   main.find("br").replaceWith("\n");
-  main.find("p, div, h1, h2, h3, h4, h5, h6").before("\n").after("\n");
+  main.find("p, div, h1, h2, h3, h4, h5, h6").before("\n\n").after("\n\n");
   main.find("img.gaiji").each((_, element) => { $(element).replaceWith($(element).attr("alt") ?? ""); });
-  const paragraphs = main.text().split(/\r?\n/).map(text => text.trim()).filter(Boolean);
+  const paragraphs: string[] = [];
+  let lines: string[] = [];
+  const flush = () => {
+    if (lines.length) paragraphs.push(lines.join("\n"));
+    lines = [];
+  };
+  for (const line of main.text().split("\n")) {
+    if (!line.trim()) {
+      flush();
+      continue;
+    }
+    if (/^[ \t]*　/.test(line)) flush();
+    lines.push(line.trim());
+  }
+  flush();
   if (!paragraphs.length) throw new Error("本文に段落がありません。");
   return { aozoraWorkId, title, author, paragraphs };
 }
