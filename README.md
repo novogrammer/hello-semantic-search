@@ -1,0 +1,57 @@
+# hello-semantic-search
+
+青空文庫の段落を自然文で検索する学習用アプリです。Node.js / TypeScript / Express、PostgreSQL 18 + pgvector、OpenAI Embeddings API、Cheerioを使用します。
+
+## 起動と検索
+
+リポジトリ直下の `.env` に `OPENAI_API_KEY` を設定してください。`.env` はGit管理対象外です。
+
+```bash
+docker compose up --build -d
+# まず羅生門1作品を投入（OpenAI APIの利用料金が発生します）
+docker compose run --rm app npm run import -- data/127_15260.html
+curl --get 'http://localhost:3000/search' --data-urlencode 'query=孤独や不安を感じる場面' --data 'limit=10'
+```
+
+`GET /search?query=...&limit=10` は `query` と `results` を返します。各結果には `title`、`author`、`aozora_work_id`、`paragraph_no`、`body`、`distance` が含まれます。コサイン距離 `distance` が小さい順です。HNSWは近似検索です。
+
+queryは空白だけを除く1〜2000文字、limitは1〜50の整数（省略時10）です。不正入力は400、DBまたはEmbedding処理の失敗は502になります。データがなければ結果は空配列です。検索時にもEmbedding APIの利用料金が発生します。
+
+## データ投入
+
+```bash
+# data/内の全HTMLを投入
+docker compose run --rm app npm run import
+# API・DBを使わず、作品名・段落数・先頭段落を確認
+docker compose run --rm --no-deps app npm run import -- --dry-run
+```
+
+入力は `app/data/作品ID_ファイルID.html`（`.xhtml`も可）です。追加したファイルをコンテナで使う場合は `docker compose build app` で再ビルドしてください。ファイルのダウンロードは行いません。
+
+BufferをCheerioの `loadBuffer()` に渡し、文字コードを判定します。`.main_text` 内のルビの `rt` / `rp` を除去し、親文字を残します。外部CSSやJavaScriptの読み込み・実行はありません。`br`、ブロック要素の境界、本文内の改行で分割してtrimし、空行を除いた順に1から段落番号を付けます。見出しも本文内なら含まれます。
+
+1段落を1行・1Embeddingとして保存します。複数段落の結合やオーバーラップは行いません。APIへは16段落ずつ送信します。モデルは取り込み・検索とも `text-embedding-3-small`、1536次元で固定しています（[OpenAI公式ドキュメント](https://developers.openai.com/api/docs/guides/embeddings)）。単一段落がモデルの入力上限を超えた場合は、切り捨てずにその作品の取り込みを失敗させます。
+
+作品ごとにトランザクションを使い、途中で失敗した作品のDB変更をロールバックします。それ以前に完了した作品は残ります。既存の `aozora_work_id` はAPIを呼ばずスキップするので、再実行で重複しません。失敗前に実行したAPI呼び出しの料金は戻らず、再試行時には再度Embeddingを作ります。
+
+## 開発・検証
+
+```bash
+docker compose -f compose.yaml -f compose.dev.yaml up --build
+```
+
+開発時は `src/` と `scripts/` のみbind mountし、`tsx watch` で起動します。依存変更時は再ビルドが必要です。
+
+```bash
+cd app
+npm ci
+npm run build
+npm test
+npm run import -- --dry-run
+```
+
+テストは保存済みHTMLの抽出と、API・DBをモックした検索処理を検証します。実APIや実DBには接続しません。ビルド成果物は `dist/src/` と `dist/scripts/` に出力されます。
+
+PostgreSQLデータはnamed volumeに保存されます。`db/init/001-schema.sql` は空のDBを初期化するときだけ実行され、既存volumeには自動適用されません。現在のComposeは固定タグ `pgvector/pgvector:0.8.6-pg18-trixie` を使用します。アプリはDBのhealthcheck成功後に起動します。
+
+ORM、migrationツール、認証、フロントエンド、RAG・回答生成は含みません。ポートはローカル学習用に127.0.0.1へbindしています。
