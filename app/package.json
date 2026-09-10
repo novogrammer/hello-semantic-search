@@ -1,0 +1,27 @@
+{
+  "name": "hello-semantic-search-app",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "import": "tsx scripts/import-aozora.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Yusuke Kawamoto <novogrammer@gmail.com> (https://github.com/novogrammer/)",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "express": "^5.2.1",
+    "openai": "^7.13.0",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.20.2",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

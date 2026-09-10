@@ -1,0 +1,26 @@
+services:
+  app:
+    build: ./app
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/aozora
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    depends_on:
+      - db
+
+  db:
+    image: pgvector/pgvector:0.8.6-pg18-trixie
+    environment:
+      POSTGRES_DB: aozora
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./db/init:/docker-entrypoint-initdb.d
+
+volumes:
+  postgres_data:
