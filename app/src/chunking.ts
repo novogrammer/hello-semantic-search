@@ -1,6 +1,7 @@
 import { getEncoding } from "js-tiktoken";
+import { documentEmbeddingInput, type WorkMetadata } from "./embeddings.js";
 
-// text-embedding-3-smallに対応。文字数ではなく送信する本文のトークン数で制限する。
+// text-embedding-3-smallに対応。作品情報を含む送信テキストのトークン数で制限する。
 const tokenizer = getEncoding("cl100k_base");
 export const MAX_CHUNK_TOKENS = 1000;
 
@@ -9,8 +10,8 @@ export function countTokens(text: string) {
   return tokenizer.encode(text, [], []).length;
 }
 
-function splitLongText(text: string, level = 0): string[] {
-  if (countTokens(text) <= MAX_CHUNK_TOKENS) return [text];
+function splitLongText(text: string, measure: (text: string) => number, level = 0): string[] {
+  if (measure(text) <= MAX_CHUNK_TOKENS) return [text];
 
   if (level < 2) {
     // 改行 → 文末の順で細分化する。区切り文字と閉じ括弧も本文に残す。
@@ -20,8 +21,8 @@ function splitLongText(text: string, level = 0): string[] {
     const chunks: string[] = [];
     let current = "";
     for (const part of parts) {
-      for (const piece of splitLongText(part, level + 1)) {
-        if (current && countTokens(current + piece) > MAX_CHUNK_TOKENS) {
+      for (const piece of splitLongText(part, measure, level + 1)) {
+        if (current && measure(current + piece) > MAX_CHUNK_TOKENS) {
           chunks.push(current);
           current = "";
         }
@@ -44,7 +45,7 @@ function splitLongText(text: string, level = 0): string[] {
     while (low <= high) {
       const length = Math.floor((low + high) / 2);
       const candidate = characters.slice(offset, offset + length).join("");
-      if (countTokens(candidate) <= MAX_CHUNK_TOKENS) {
+      if (measure(candidate) <= MAX_CHUNK_TOKENS) {
         accepted = length;
         low = length + 1;
       } else {
@@ -58,10 +59,14 @@ function splitLongText(text: string, level = 0): string[] {
   return chunks;
 }
 
-export function chunkParagraphs(paragraphs: string[]) {
+export function chunkParagraphs(paragraphs: string[], work?: WorkMetadata) {
+  const measure = (body: string) => countTokens(work ? documentEmbeddingInput(work, body) : body);
+  if (measure("") >= MAX_CHUNK_TOKENS) {
+    throw new Error("作品名・著者だけでEmbedding用の上限に達しています。");
+  }
   // 元の段落をまたぐ結合やオーバーラップは行わない。
-  const chunks = paragraphs.flatMap(paragraph => splitLongText(paragraph));
-  if (chunks.some(chunk => !chunk.trim() || countTokens(chunk) > MAX_CHUNK_TOKENS)) {
+  const chunks = paragraphs.flatMap(paragraph => splitLongText(paragraph, measure));
+  if (chunks.some(chunk => !chunk.trim() || measure(chunk) > MAX_CHUNK_TOKENS)) {
     throw new Error("Embedding用の段落に空文字または上限超過があります。");
   }
   return chunks;

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import OpenAI from "openai";
 import { parseAozora } from "../src/aozora.js";
 import { createPool } from "../src/db.js";
-import { createOpenAI, embed } from "../src/embeddings.js";
+import { createOpenAI, documentEmbeddingInput, embed } from "../src/embeddings.js";
 import { chunkParagraphs, countTokens } from "../src/chunking.js";
 
 async function main() {
@@ -19,9 +19,9 @@ async function main() {
   for (const file of files) {
     console.log(`読み込み: ${file}`);
     const work = parseAozora(await readFile(file), file);
-    const paragraphs = chunkParagraphs(work.paragraphs);
-    const maxTokens = paragraphs.reduce((max, body) => Math.max(max, countTokens(body)), 0);
-    console.log(`${work.author}「${work.title}」: 形式分割${work.paragraphs.length}段落 → 保存用${paragraphs.length}段落（最大${maxTokens}トークン）`);
+    const paragraphs = chunkParagraphs(work.paragraphs, work);
+    const maxTokens = paragraphs.reduce((max, body) => Math.max(max, countTokens(documentEmbeddingInput(work, body))), 0);
+    console.log(`${work.author}「${work.title}」: 形式分割${work.paragraphs.length}段落 → 保存用${paragraphs.length}段落（作品名・著者込みで最大${maxTokens}トークン）`);
     if (dryRun) console.log(`先頭段落: ${paragraphs[0].slice(0, 120)}`);
     preparedWorks.push({ ...work, file, paragraphs });
   }
@@ -48,7 +48,7 @@ async function main() {
           console.log(`Embedding: 段落${offset + 1}〜${offset + batch.length}`);
           let vectors: string[];
           try {
-            vectors = await embed(openai, batch);
+            vectors = await embed(openai, batch.map(body => documentEmbeddingInput(work, body)));
           } catch (error) {
             // APIのエラー全文・ヘッダーは出さず、判別に必要な情報だけ表示する。
             if (error instanceof OpenAI.APIError) {

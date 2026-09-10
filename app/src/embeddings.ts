@@ -3,6 +3,15 @@ import OpenAI from "openai";
 export const EMBEDDING_MODEL = "text-embedding-3-small";
 export const EMBEDDING_DIMENSIONS = 1536;
 
+export interface WorkMetadata {
+  title: string;
+  author: string;
+}
+
+export function documentEmbeddingInput(work: WorkMetadata, body: string) {
+  return `作品名：${work.title}\n著者：${work.author}\n本文：${body}`;
+}
+
 export function createOpenAI() {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY を設定してください。");
   return new OpenAI({ timeout: 60_000, maxRetries: 2 });

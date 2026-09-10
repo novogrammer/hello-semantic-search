@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 import { parseAozora } from "../src/aozora.js";
 import { chunkParagraphs, countTokens, MAX_CHUNK_TOKENS } from "../src/chunking.js";
+import { documentEmbeddingInput } from "../src/embeddings.js";
 
 test("短い段落と詩はそのまま保持し、隣接段落を結合しない", () => {
   const paragraphs = ["短い本文。", "詩の一行目\n詩の二行目", "<|endoftext|>という文字列"];
@@ -35,12 +36,12 @@ test("区切りのない長文も日本語・補助文字を壊さず上限内�
   }
 });
 
-test("全10作品を上限内に分割し、本文の欠落・重複を生まない", async () => {
+test("全10作品を作品名・著者込みで上限内に分割し、本文の欠落・重複を生まない", async () => {
   for (const file of (await readdir("data")).filter(file => file.endsWith(".html"))) {
     const work = parseAozora(await readFile(`data/${file}`), file);
-    const chunks = chunkParagraphs(work.paragraphs);
+    const chunks = chunkParagraphs(work.paragraphs, work);
     assert.equal(chunks.join(""), work.paragraphs.join(""), file);
-    assert.ok(chunks.every(chunk => chunk.trim() && countTokens(chunk) <= MAX_CHUNK_TOKENS), file);
+    assert.ok(chunks.every(chunk => chunk.trim() && countTokens(documentEmbeddingInput(work, chunk)) <= MAX_CHUNK_TOKENS), file);
     if (work.aozoraWorkId === 2093) {
       const long = work.paragraphs[1564];
       assert.equal(long.length, 12441);
@@ -52,4 +53,16 @@ test("全10作品を上限内に分割し、本文の欠落・重複を生まな
       assert.ok(chunks.includes(poem));
     }
   }
+});
+
+test("本文単体では収まっても、作品情報を加えて上限を超える場合は分割する", () => {
+  const work = { title: "長い作品名".repeat(70), author: "著者" };
+  const body = "日本語の本文です。".repeat(70);
+  assert.ok(countTokens(body) <= MAX_CHUNK_TOKENS);
+  assert.ok(countTokens(documentEmbeddingInput(work, body)) > MAX_CHUNK_TOKENS);
+  const chunks = chunkParagraphs([body], work);
+  assert.ok(chunks.length > 1);
+  assert.equal(chunks.join(""), body);
+  assert.ok(chunks.every(chunk => countTokens(documentEmbeddingInput(work, chunk)) <= MAX_CHUNK_TOKENS));
+  assert.throws(() => chunkParagraphs(["本文"], { title: "作品名".repeat(1000), author: "著者" }));
 });
