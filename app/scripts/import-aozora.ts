@@ -1,5 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import OpenAI from "openai";
 import { parseAozora } from "../src/aozora.js";
 import { createPool } from "../src/db.js";
 import { createOpenAI, embed } from "../src/embeddings.js";
@@ -21,6 +22,9 @@ async function main() {
       console.log(`${work.author}「${work.title}」: ${work.paragraphs.length}段落`);
       if (!pool || !openai) {
         console.log(`先頭段落: ${work.paragraphs[0].slice(0, 120)}`);
+        const longest = work.paragraphs.reduce((best, body, i) =>
+          body.length > work.paragraphs[best].length ? i : best, 0);
+        console.log(`最長段落: ${longest + 1}（${work.paragraphs[longest].length}文字。トークン数ではありません）`);
         continue;
       }
       const client = await pool.connect();
@@ -38,7 +42,24 @@ async function main() {
         for (let offset = 0; offset < work.paragraphs.length; offset += 16) {
           const batch = work.paragraphs.slice(offset, offset + 16);
           console.log(`Embedding: 段落${offset + 1}〜${offset + batch.length}`);
-          const vectors = await embed(openai, batch);
+          let vectors: string[];
+          try {
+            vectors = await embed(openai, batch);
+          } catch (error) {
+            // APIのエラー全文・ヘッダーは出さず、判別に必要な情報だけ表示する。
+            if (error instanceof OpenAI.APIError) {
+              const reason = /maximum context length|too many tokens|max_tokens_per_request/i.test(error.message)
+                ? "入力トークン数の上限超過"
+                : error.status === 429 ? "レート制限または利用枠の上限"
+                : error.status === 401 ? "認証エラー"
+                : "APIリクエスト失敗";
+              console.error(`OpenAI: ${reason}（HTTP ${error.status ?? "応答なし"}）`);
+            } else {
+              console.error("Embedding応答の処理に失敗しました。");
+            }
+            console.error(`各段落の文字数: ${batch.map((body, i) => `${offset + i + 1}=${body.length}`).join(", ")}`);
+            throw error;
+          }
           for (let i = 0; i < batch.length; i++) {
             await client.query(`
               INSERT INTO chunks (work_id, paragraph_no, body, embedding)
