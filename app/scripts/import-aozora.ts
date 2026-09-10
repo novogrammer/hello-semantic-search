@@ -4,6 +4,7 @@ import OpenAI from "openai";
 import { parseAozora } from "../src/aozora.js";
 import { createPool } from "../src/db.js";
 import { createOpenAI, embed } from "../src/embeddings.js";
+import { chunkParagraphs, countTokens } from "../src/chunking.js";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -13,20 +14,23 @@ async function main() {
   const files = paths.length ? paths : (await readdir("data"))
     .filter(name => /\.(?:html|xhtml)$/i.test(name)).sort().map(name => join("data", name));
   if (!files.length) throw new Error("取り込むHTMLがありません。");
-  const pool = dryRun ? undefined : createPool();
+  // 全ファイルの抽出・分割・上限検査を済ませてからDB/APIに接続する。
+  const preparedWorks = [];
+  for (const file of files) {
+    console.log(`読み込み: ${file}`);
+    const work = parseAozora(await readFile(file), file);
+    const paragraphs = chunkParagraphs(work.paragraphs);
+    const maxTokens = paragraphs.reduce((max, body) => Math.max(max, countTokens(body)), 0);
+    console.log(`${work.author}「${work.title}」: 形式分割${work.paragraphs.length}段落 → 保存用${paragraphs.length}段落（最大${maxTokens}トークン）`);
+    if (dryRun) console.log(`先頭段落: ${paragraphs[0].slice(0, 120)}`);
+    preparedWorks.push({ ...work, file, paragraphs });
+  }
+  if (dryRun) return;
+  const openai = createOpenAI();
+  const pool = createPool();
   try {
-    const openai = dryRun ? undefined : createOpenAI();
-    for (const file of files) {
-      console.log(`読み込み: ${file}`);
-      const work = parseAozora(await readFile(file), file);
-      console.log(`${work.author}「${work.title}」: ${work.paragraphs.length}段落`);
-      if (!pool || !openai) {
-        console.log(`先頭段落: ${work.paragraphs[0].slice(0, 120)}`);
-        const longest = work.paragraphs.reduce((best, body, i) =>
-          body.length > work.paragraphs[best].length ? i : best, 0);
-        console.log(`最長段落: ${longest + 1}（${work.paragraphs[longest].length}文字。トークン数ではありません）`);
-        continue;
-      }
+    for (const work of preparedWorks) {
+      console.log(`取り込み: ${work.file}「${work.title}」`);
       const client = await pool.connect();
       try {
         await client.query("BEGIN");

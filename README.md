@@ -30,7 +30,11 @@ docker compose run --rm --no-deps app npm run import -- --dry-run
 
 BufferをCheerioの `loadBuffer()` に渡し、文字コードを判定します。`.main_text` 内のルビの `rt` / `rp` を除去し、親文字を残します。外部CSSやJavaScriptの読み込み・実行はありません。HTMLソース整形用の改行を除去し、`br` を改行として扱います。行頭の全角空白、連続する `br` による空行、ブロック要素の境界で段落を区切ります。単独の `br` は段落内の改行として残します。全角空白を判定してからtrimし、空段落を除いた順に1から段落番号を付けます。見出しも本文内なら含まれます。
 
-1段落を1行・1Embeddingとして保存します。複数段落の結合やオーバーラップは行いません。APIへは16段落ずつ送信します。モデルは取り込み・検索とも `text-embedding-3-small`、1536次元で固定しています（[OpenAI公式ドキュメント](https://developers.openai.com/api/docs/guides/embeddings)）。単一段落がモデルの入力上限を超えた場合は、切り捨てずにその作品の取り込みを失敗させます。
+形式による段落抽出の後に、Embedding用の分割を行います。`js-tiktoken` の `cl100k_base` で計測し、1,000トークンを超える段落だけ、段落内改行 → 句点・疑問符・感嘆符 → Unicode文字境界の順に分割します。上限は `app/src/chunking.ts` の `MAX_CHUNK_TOKENS` で定義しています。本文の切り捨て、複数段落の結合、オーバーラップは行いません。
+
+全入力ファイルの分割・上限検査を完了してからDB/APIへ接続します。`--dry-run` では形式分割の段落数、保存用の段落数、分割後の最大トークン数を確認できます。
+
+分割後の1段落を1行・1Embeddingとして保存します。`paragraph_no` は原文の段落番号ではなく、分割後の作品内連番（1始まり）です。DB構造は変更しません。APIへは16段落ずつ送信します。モデルは取り込み・検索とも `text-embedding-3-small`、1536次元で固定しています（[OpenAI公式ドキュメント](https://developers.openai.com/api/docs/guides/embeddings)）。
 
 作品ごとにトランザクションを使い、途中で失敗した作品のDB変更をロールバックします。それ以前に完了した作品は残ります。既存の `aozora_work_id` はAPIを呼ばずスキップするので、再実行で重複しません。失敗前に実行したAPI呼び出しの料金は戻らず、再試行時には再度Embeddingを作ります。
 
