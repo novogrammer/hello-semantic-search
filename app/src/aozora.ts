@@ -18,8 +18,10 @@ export function parseAozora(buffer: Buffer, filename: string) {
   main.find("*").addBack().contents().each((_, node) => {
     if (node.type === "text") node.data = node.data.replace(/[ \t]*[\r\n]+[ \t]*/g, "");
   });
+  // 本文内の見出しだけを除外し、前後の本文の段落境界は残す。
+  main.find("h1, h2, h3, h4, h5, h6").replaceWith("\n\n");
   main.find("br").replaceWith("\n");
-  main.find("p, div, h1, h2, h3, h4, h5, h6").before("\n\n").after("\n\n");
+  main.find("p, div").before("\n\n").after("\n\n");
   main.find("img.gaiji").each((_, element) => { $(element).replaceWith($(element).attr("alt") ?? ""); });
   const paragraphs: string[] = [];
   let lines: string[] = [];
