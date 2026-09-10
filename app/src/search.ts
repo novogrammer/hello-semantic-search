@@ -2,9 +2,18 @@ import type { Pool } from "pg";
 import type OpenAI from "openai";
 import { embed } from "./embeddings.js";
 
+export interface SearchResult {
+  title: string;
+  author: string;
+  aozora_work_id: number | null;
+  paragraph_no: number;
+  body: string;
+  distance: number;
+}
+
 export async function search(pool: Pool, openai: OpenAI, query: string, limit = 10) {
   const [vector] = await embed(openai, [query]);
-  const result = await pool.query(`
+  const result = await pool.query<SearchResult>(`
     SELECT works.title, works.author, works.aozora_work_id,
            chunks.paragraph_no, chunks.body,
            chunks.embedding <=> $1::vector AS distance

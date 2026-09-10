@@ -1,6 +1,6 @@
 # hello-semantic-search
 
-青空文庫の段落を自然文で検索する学習用アプリです。Node.js / TypeScript / Express、PostgreSQL 18 + pgvector、OpenAI Embeddings API、Cheerioを使用します。
+青空文庫の段落を自然文で検索し、検索した本文をもとに質問へ回答する学習用アプリです。Node.js / TypeScript / Express、PostgreSQL 18 + pgvector、OpenAI API、Cheerioを使用します。
 
 ## 起動と検索
 
@@ -20,6 +20,60 @@ curl --get 'http://localhost:3000/search' --data-urlencode 'query=行き場を�
 `GET /search?query=...&limit=10` は `query` と `results` を返します。各結果には `title`、`author`、`aozora_work_id`、`paragraph_no`、`body`、`distance` が含まれます。コサイン距離 `distance` が小さい順です。HNSWは近似検索です。
 
 queryは空白だけを除く1〜2000文字、limitは1〜50の整数（省略時10）です。不正入力は400、DBまたはEmbedding処理の失敗は502になります。データがなければ結果は空配列です。検索時にもEmbedding APIの利用料金が発生します。
+
+## 本文を調べて質問に答える（Function calling）
+
+`POST /ask` は一問一答のAPIです。LLMが検索文を作り、アプリが既存の意味検索を実行して結果を返すと、LLMが参考資料に基づいて回答します。既存DBをそのまま利用するので、この機能の追加によるデータ再投入は不要です。
+
+```bash
+# 修正版のアプリをビルド・起動
+docker compose up --build -d app
+# 「坊っちゃん」を含む作品の取り込みが完了してから試してください
+curl 'http://localhost:3000/ask' \
+  -H 'Content-Type: application/json' \
+  --data '{"question":"坊っちゃんと清の関係を教えて"}'
+```
+
+レスポンスの構造は次のとおりです（本文・回答は説明用です）。
+
+```json
+{
+  "question": "坊っちゃんと清の関係を教えて",
+  "answer": "取得した本文では、清が坊っちゃんを大切にする様子が描かれています。[1]",
+  "sources": [
+    {
+      "number": 1,
+      "title": "坊っちゃん",
+      "author": "夏目漱石",
+      "aozora_work_id": 752,
+      "paragraph_no": 1,
+      "body": "（検索された本文）"
+    }
+  ],
+  "searches": [
+    {
+      "query": "坊っちゃんと清の信頼や愛情が描かれている場面",
+      "source_numbers": [1]
+    }
+  ]
+}
+```
+
+`sources` はLLMに渡した資料一覧で、回答中の `[1]` は `number: 1` に対応します。すべての資料が回答に引用されるとは限りません。同じ作品ID・段落番号の資料には同じ番号を使います。`searches` は実際の検索文と取得した資料番号を実行順に示します。LLMによる引用の正しさは本文と照合して確認できます。
+
+初回は必ず `search_aozora` を呼び出し、1回につき上位5件を取得します。追加検索はLLMが判断しますが、初回を含め最大3回です。上限は `app/src/answer.ts` の `MAX_SEARCH_CALLS` で定義し、指示とコードの両方で制限します。3回検索した後は検索を禁止して回答を生成します。検索0件も結果としてLLMへ返し、資料が足りなければ判断できない旨を回答させます。作品での厳密な絞り込みは行わないため、質問で作品を指定しても検索には他作品が混ざることがあります。
+
+回答モデルの既定値は `gpt-4.1-mini` です。変更するときは `.env` に次を追加し、アプリのコンテナを再作成してください。Embeddingモデルは変わりません。
+
+```env
+OPENAI_ANSWER_MODEL=gpt-4.1-mini
+```
+
+質問は空白だけを不可とする1〜2000文字、JSON本文は16KB以内です。不正入力・JSON不正は400、本文サイズ超過は413、API・DB障害や不正なツール応答、生成未完了・空の回答は502を返します。
+
+質問1件あたりResponses APIは最大4回、検索用Embeddingは最大3回呼び出します。各生成の出力上限は2,000トークンです。SDKの既存リトライ（最大2回）はこれらの論理的な呼び出し回数とは別です。検索用Embeddingに加えて、回答生成の入力・出力にもAPI利用料金が発生します。
+
+ツールとの往復履歴は質問1件の処理内だけで保持し、Responses APIには `store: false` を指定します。次の質問に会話履歴は引き継ぎません。画面やストリーミングは含みません。実装は[OpenAI公式のFunction calling仕様](https://developers.openai.com/api/docs/guides/function-calling)に基づきます。
 
 ## データ投入
 
@@ -58,8 +112,8 @@ npm test
 npm run import -- --dry-run
 ```
 
-テストは保存済みHTMLの抽出と、API・DBをモックした検索処理を検証します。実APIや実DBには接続しません。ビルド成果物は `dist/src/` と `dist/scripts/` に出力されます。
+テストは保存済みHTMLの抽出・分割と、API・DBをモックした検索・回答生成を検証します。Function callingの履歴、検索上限、資料番号、入力検証、障害時の応答も対象です。実APIや実DBには接続しません。ビルド成果物は `dist/src/` と `dist/scripts/` に出力されます。
 
 PostgreSQLデータはnamed volumeに保存されます。`db/init/001-schema.sql` は空のDBを初期化するときだけ実行され、既存volumeには自動適用されません。現在のComposeは固定タグ `pgvector/pgvector:0.8.6-pg18-trixie` を使用します。アプリはDBのhealthcheck成功後に起動します。
 
-ORM、migrationツール、認証、フロントエンド、RAG・回答生成は含みません。ポートはローカル学習用に127.0.0.1へbindしています。
+ORM、migrationツール、認証、フロントエンドは含みません。ポートはローカル学習用に127.0.0.1へbindしています。
